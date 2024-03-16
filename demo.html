@@ -1,0 +1,223 @@
+<html>
+  <head>
+    <style>
+      .container {
+        max-width: 700px;
+        margin: 0 auto;
+        position: relative;
+      }
+      .blog-item {
+        height: 300px;
+        background: white;
+        border-top: 1px solid black;
+        position: relative;
+      }
+
+      .bubble {
+        transition: 0.1s all;
+        transition-timing-function: steps(4, jump-start);
+        pointer-events: none;
+        position: fixed;
+        background: blue;
+        border-radius: 50%;
+        height: 196px;
+        width: 196px;
+        z-index: 1000;
+        left: 100px;
+        display: flex;
+        opacity: 0;
+        transform: scale(0.5);
+      }
+
+      .blog-item-line {
+        position: absolute;
+        top: -32.5px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="bubble"></div>
+      <div class="blog-item"></div>
+      <div class="blog-item"></div>
+      <div class="blog-item"></div>
+      <div class="blog-item"></div>
+      <div class="blog-item"></div>
+      <div class="blog-item"></div>
+    </div>
+  </body>
+  <script>
+    const BLOG_ITEM_SELECTOR = ".blog-item";
+    const fromHTML = (html, trim = true) => {
+      // Process the HTML string.
+      html = trim ? html.trim() : html;
+      if (!html) return null;
+
+      // Then set up a new template element.
+      const template = document.createElement("template");
+      template.innerHTML = html;
+      const result = template.content.children;
+
+      // Then return either an HTMLElement or HTMLCollection,
+      // based on whether the input HTML had one or more roots.
+      if (result.length === 1) return result[0];
+      return result;
+    };
+
+    const EDGE_WARP_OFFSET = 170;
+    const MAX_LINE_RANGE = 64;
+
+    const bubbleEl = document.querySelector(".bubble");
+
+    /* active section state */
+    let activeBlogSection = null;
+
+    /* cursor state */
+    let scrollPosition = [0, 0];
+    const setCursorPosition = (e) => {
+      if (e.clientX && e.clientY) {
+        // keeping mouse position in memory because we don't receive it during scroll
+        scrollPosition = [e.clientX, e.clientY];
+      }
+    };
+
+    /* line utilites */
+    const getSvgLinesOfEl = (blogSection) => {
+      const svgLineTop = blogSection.querySelector(".blog-item-line-path");
+      const svgLineBottom = blogSection.nextElementSibling?.querySelector(
+        ".blog-item-line-path"
+      );
+
+      return {
+        top: svgLineTop,
+        bottom: svgLineBottom,
+      };
+    };
+
+    const resetSvgLinesOfEl = (blogSection) => {
+      if (blogSection) {
+        const { top, bottom } = getSvgLinesOfEl(blogSection);
+        if (top) {
+          top.setAttribute("d", dCurve(32));
+        }
+        if (bottom) {
+          bottom.setAttribute("d", dCurve(32));
+        }
+      }
+    };
+
+    const setActiveSection = () => {
+      const pointElement = document.elementFromPoint(...scrollPosition);
+      if (pointElement) {
+        const blogItemElement = pointElement.closest(BLOG_ITEM_SELECTOR);
+        if (blogItemElement) {
+          if (blogItemElement !== activeBlogSection) {
+            resetSvgLinesOfEl(activeBlogSection);
+            activeBlogSection = blogItemElement;
+          }
+        } else {
+          resetSvgLinesOfEl(activeBlogSection);
+          activeBlogSection = null;
+        }
+      }
+
+      if (activeBlogSection === null) {
+        bubbleEl.style.opacity = 0;
+          bubbleEl.style.transform = "scale(0.5)";
+      }
+    };
+
+    const reposition = (e) => {
+      setCursorPosition(e);
+      setActiveSection();
+
+      if (activeBlogSection) {
+        const containerRect = activeBlogSection.getBoundingClientRect();
+
+        const cursorPositionWithinContainer =
+          scrollPosition[1] - containerRect.top;
+
+        const cursorPositionRelative =
+          cursorPositionWithinContainer / containerRect.height;
+
+        // top line curving
+        const positionRelativeTop =
+          Math.min(cursorPositionWithinContainer, EDGE_WARP_OFFSET) /
+          EDGE_WARP_OFFSET;
+        const curvePositionTop = Math.round(
+          Math.min(positionRelativeTop, 0.5) * MAX_LINE_RANGE
+        );
+
+        const svgLineTop = activeBlogSection.querySelector(
+          ".blog-item-line-path"
+        );
+        svgLineTop.setAttribute("d", dCurve(curvePositionTop));
+
+        // bottom line curving
+
+        const positionRelativeBottom =
+          Math.min(
+            Math.abs(cursorPositionWithinContainer - containerRect.height),
+            EDGE_WARP_OFFSET
+          ) / EDGE_WARP_OFFSET;
+
+        const curvePositionBottom = Math.round(
+          (1 - Math.min(positionRelativeBottom, 0.5)) * MAX_LINE_RANGE
+        );
+
+        const svgLineBottom =
+          activeBlogSection.nextElementSibling?.querySelector(
+            ".blog-item-line-path"
+          );
+        if (svgLineBottom) {
+          svgLineBottom.setAttribute("d", dCurve(curvePositionBottom));
+        }
+
+        const extraOffset = (cursorPositionRelative - 0.5) * 30;
+        bubbleEl.style.left = containerRect.left + 100;
+
+        bubbleEl.style.top =
+          scrollPosition[1] - 196 * cursorPositionRelative + extraOffset;
+
+        setTimeout(() => {
+          bubbleEl.style.opacity = 1;
+          bubbleEl.style.transform = "scale(1)";
+        }, 100);
+      }
+    };
+
+    /**
+     * Initialize
+     */
+
+     
+    document.addEventListener("mousemove", reposition);
+    document.addEventListener("scroll", reposition);
+    document.addEventListener("resize", reposition);
+
+    const dCurve = (yPosition) =>
+      `M0 32C100 32 125 ${yPosition} 200 ${yPosition}C275 ${yPosition} 300 32 400 32`;
+
+    const hoverItems = document.querySelectorAll(BLOG_ITEM_SELECTOR);
+    hoverItems.forEach((blogItem) => {
+      const svgLine = fromHTML(`
+        <svg
+          class="blog-item-line"
+          width="400"
+          height="64"
+          viewBox="0 0 400 64"
+          fill="white"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+        <rect width="100%" height="100%" fill="white"/>
+          <path
+          class="blog-item-line-path"
+            d="M0 32C100 32 100 32 200 32C300 32 300 32 400 32"
+            stroke="black"
+          />
+        </svg>`);
+      blogItem.appendChild(svgLine);
+    });
+  </script>
+</html>
